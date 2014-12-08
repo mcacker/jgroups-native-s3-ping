@@ -6,7 +6,9 @@
         </Console>
     </Appenders>
     <Loggers>
-        <Root level="trace">
+        <Logger name="de.zalando.jgroups" level="trace"/>
+
+        <Root level="debug">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>

@@ -14,6 +14,8 @@ import org.jgroups.util.Responses;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -29,6 +31,7 @@ public class NATIVE_S3_PING extends FILE_PING {
 
     private static final int SERIALIZATION_BUFFER_SIZE = 4096;
     private static final String SERIALIZED_CONTENT_TYPE = "text/plain";
+    private static final Duration EXPIRATION_DURATION = Duration.of(10, ChronoUnit.SECONDS);
 
     @Property(description = "The S3 endpoint to use (optional).", exposeAsManagedAttribute = false)
     protected String endpoint;
@@ -122,10 +125,16 @@ public class NATIVE_S3_PING extends FILE_PING {
                     for (final PingData pingData : data) {
                         if (members == null || members.contains(pingData.getAddress())) {
                             responses.addResponse(pingData, pingData.isCoord());
+                            if (log.isTraceEnabled()) {
+                                log.trace("added member %s [members: %s]", pingData, members != null);
+                            }
                         }
                         if (local_addr != null && !local_addr.equals(pingData.getAddress())) {
                             addDiscoveryResponseToCaches(pingData.getAddress(), pingData.getLogicalName(),
                                     pingData.getPhysicalAddr());
+                            if (log.isTraceEnabled()) {
+                                log.trace("added possible member %s [local address: %s]", pingData, local_addr);
+                            }
                         }
 
                         if (log.isTraceEnabled()) {
@@ -181,23 +190,7 @@ public class NATIVE_S3_PING extends FILE_PING {
 
     @Override
     protected void remove(final String clustername, final Address addr) {
-        if (clustername == null || addr == null) {
-            return;
-        }
-
-        final String filename = addressToFilename(local_addr);
-        final String key = getClusterPrefix(clustername) + filename;
-
-        try {
-            s3.deleteObject(new DeleteObjectRequest(bucketName, key));
-
-            if (log.isDebugEnabled()) {
-                log.debug("deleted member from member list list in Amazon S3 [%s]", key);
-            }
-
-        } catch (final Exception e) {
-            log.error(String.format("failed to remove member from member list in Amazon S3 [%s]", key), e);
-        }
+        // our server can get killed all the time, don't depend on cleanup on shudown
     }
 
     public static void registerProtocolWithJGroups() {
