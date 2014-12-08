@@ -84,36 +84,57 @@ public class NATIVE_S3_PING extends FILE_PING {
 
         final String clusterPrefix = getClusterPrefix(clustername);
 
+        if (log.isTraceEnabled()) {
+            log.trace("getting entries for %s ...", clusterPrefix);
+        }
+
         try {
             final ObjectListing objectListing = s3.listObjects(
                     new ListObjectsRequest()
                             .withBucketName(bucketName)
                             .withPrefix(clusterPrefix));
 
+            if (log.isTraceEnabled()) {
+                log.trace("got object listing, %d entries [%s]", objectListing.getObjectSummaries().size(), clusterPrefix);
+            }
+
             // TODO batching not supported; can result in wrong lists if bucket has too many entries
 
             for (final S3ObjectSummary summary : objectListing.getObjectSummaries()) {
-                final S3Object object = s3.getObject(new GetObjectRequest(summary.getBucketName(), summary.getKey()));
-
-                final List<PingData> data = read(object.getObjectContent());
-                // TODO currently always returns null
-                if (data == null) {
-                    if (log.isDebugEnabled()) {
-                        log.debug("fetched update for member list in Amazon S3 is empty [%s]", clusterPrefix);
-                    }
-                    return;
+                if (log.isTraceEnabled()) {
+                    log.trace("fetching data for object %s ...", summary.getKey());
                 }
-                for (final PingData pingData : data) {
-                    if (members == null || members.contains(pingData.getAddress())) {
-                        responses.addResponse(pingData, pingData.isCoord());
-                    }
-                    if (local_addr != null && !local_addr.equals(pingData.getAddress())) {
-                        addDiscoveryResponseToCaches(pingData.getAddress(), pingData.getLogicalName(),
-                                pingData.getPhysicalAddr());
+
+                if (summary.getSize() > 0) {
+                    final S3Object object = s3.getObject(new GetObjectRequest(summary.getBucketName(), summary.getKey()));
+                    if (log.isTraceEnabled()) {
+                        log.trace("parsing data for object %s (%s, %d bytes)...", summary.getKey(),
+                                object.getObjectMetadata().getContentType(), object.getObjectMetadata().getContentLength());
                     }
 
+                    final List<PingData> data = read(object.getObjectContent());
+                    if (data == null) {
+                        if (log.isDebugEnabled()) {
+                            log.debug("fetched update for member list in Amazon S3 is empty [%s]", clusterPrefix);
+                        }
+                        break;
+                    }
+                    for (final PingData pingData : data) {
+                        if (members == null || members.contains(pingData.getAddress())) {
+                            responses.addResponse(pingData, pingData.isCoord());
+                        }
+                        if (local_addr != null && !local_addr.equals(pingData.getAddress())) {
+                            addDiscoveryResponseToCaches(pingData.getAddress(), pingData.getLogicalName(),
+                                    pingData.getPhysicalAddr());
+                        }
+
+                        if (log.isTraceEnabled()) {
+                            log.trace("processed entry in Amazon S3 [%s -> %s]", summary.getKey(), pingData);
+                        }
+                    }
+                } else {
                     if (log.isTraceEnabled()) {
-                        log.trace("processed entry in Amazon S3 [%s -> %s]", summary.getKey(), pingData);
+                        log.trace("skipping object %s as it is empty", summary.getKey());
                     }
                 }
             }
@@ -142,6 +163,10 @@ public class NATIVE_S3_PING extends FILE_PING {
             final ObjectMetadata objectMetadata = new ObjectMetadata();
             objectMetadata.setContentType(SERIALIZED_CONTENT_TYPE);
             objectMetadata.setContentLength(data.length);
+
+            if (log.isTraceEnabled()) {
+                log.trace("new S3 file content (%d bytes): %s", data.length, new String(data));
+            }
 
             s3.putObject(new PutObjectRequest(bucketName, key, inStream, objectMetadata));
 
