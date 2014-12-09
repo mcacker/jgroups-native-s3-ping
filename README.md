@@ -3,6 +3,14 @@
 Native means, it uses the AWS SDK and does not implement the HTTP protocol on its own. The benefit is a more stable
 connection as well as usage of IAM server profiles and AWS standardized credential distribution.
 
+# Artifact
+
+    <dependency>
+        <groupId>de.zalando</groupId>
+        <artifactId>jgroups-native-s3-ping</artifactId>
+        <version>0.1.0</version>
+    </dependency>
+
 # Configuration
 
 Like the original `S3_PING`, this library implement a JGroups `Discovery` protocol which replaces protocols like
