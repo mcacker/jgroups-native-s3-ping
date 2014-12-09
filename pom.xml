@@ -150,6 +150,9 @@
                                 <goals>
                                     <goal>sign</goal>
                                 </goals>
+                                <configuration>
+                                    <keyname>tobias@sarnowski.io</keyname>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
