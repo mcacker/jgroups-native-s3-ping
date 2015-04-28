@@ -99,7 +99,7 @@ To be able to use this configuration in your application, you have to initialize
 
 # License
 
-    Copyright 2014 Zalando SE
+    Copyright 2015 Zalando SE
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
