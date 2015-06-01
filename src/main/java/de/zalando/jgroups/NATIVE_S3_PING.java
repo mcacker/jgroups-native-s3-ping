@@ -14,8 +14,6 @@ import org.jgroups.util.Responses;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -31,7 +29,6 @@ public class NATIVE_S3_PING extends FILE_PING {
 
     private static final int SERIALIZATION_BUFFER_SIZE = 4096;
     private static final String SERIALIZED_CONTENT_TYPE = "text/plain";
-    private static final Duration EXPIRATION_DURATION = Duration.of(10, ChronoUnit.SECONDS);
 
     @Property(description = "The S3 endpoint to use (optional).", exposeAsManagedAttribute = false)
     protected String endpoint;
