@@ -23,12 +23,6 @@ Like the original `S3_PING`, this library implement a JGroups `Discovery` protoc
         bucketPrefix="jgroups"/>
 ```
 
-To be able to use this configuration in your application, you have to initialize the plugin in your code:
-
-```java
-NATIVE_S3_PING.registerProtocolWithJGroups();
-```
-
 ## Possible Configurations
 
 * **regionName**: like "eu-west-1", "us-east-1", etc.

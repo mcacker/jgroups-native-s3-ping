@@ -13,7 +13,6 @@ public class NativeS3PingTest {
 
     @Test
     public void findMembersTest() {
-        NATIVE_S3_PING.registerProtocolWithJGroups();
 
         final List<ClusterMember> members = new ArrayList<ClusterMember>();
         for (int n = 0; n < MEMBER_COUNT; n++) {

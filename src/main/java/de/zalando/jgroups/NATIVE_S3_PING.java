@@ -44,6 +44,10 @@ public class NATIVE_S3_PING extends FILE_PING {
 
     private AmazonS3 s3;
 
+    static {
+        registerProtocolWithJGroups();
+    }
+
     @Override
     public void init() throws Exception {
         super.init();
