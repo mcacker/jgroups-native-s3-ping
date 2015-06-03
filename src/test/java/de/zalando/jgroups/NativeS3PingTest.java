@@ -4,8 +4,8 @@ import org.jgroups.JChannel;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class NativeS3PingTest {
@@ -16,7 +16,7 @@ public class NativeS3PingTest {
 
         final List<ClusterMember> members = new ArrayList<ClusterMember>();
         for (int n = 0; n < MEMBER_COUNT; n++) {
-            members.add(new ClusterMember("findMembersTest-" + Instant.now().getEpochSecond()));
+            members.add(new ClusterMember("findMembersTest-" + (new Date().getTime()) / 1000));
         }
 
         for (final ClusterMember member: members) {
