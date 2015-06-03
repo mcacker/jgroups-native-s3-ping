@@ -23,6 +23,11 @@ Like the original `S3_PING`, this library implement a JGroups `Discovery` protoc
         bucketPrefix="jgroups"/>
 ```
 
+`NATIVE_S3_PING` automatically registers itself to JGroups with the magic number 789. You can overwrite this by
+setting the system property `s3ping.magic_number` to different number:
+
+`-Ds3ping.magic_number=123`
+
 ## Possible Configurations
 
 * **regionName**: like "eu-west-1", "us-east-1", etc.
