@@ -5,17 +5,17 @@ import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.*;
+import com.amazonaws.util.StringUtils;
 import org.jgroups.Address;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.FILE_PING;
 import org.jgroups.protocols.PingData;
 import org.jgroups.util.Responses;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 /**
@@ -31,7 +31,8 @@ public class NATIVE_S3_PING extends FILE_PING {
 
     private static final int SERIALIZATION_BUFFER_SIZE = 4096;
     private static final String SERIALIZED_CONTENT_TYPE = "text/plain";
-    private static final Duration EXPIRATION_DURATION = Duration.of(10, ChronoUnit.SECONDS);
+
+    private static final String MAGIC_NUMBER_SYSTEM_PROPERTY = "s3ping.magic_number";
 
     @Property(description = "The S3 endpoint to use (optional).", exposeAsManagedAttribute = false)
     protected String endpoint;
@@ -46,6 +47,19 @@ public class NATIVE_S3_PING extends FILE_PING {
     protected String bucketPrefix;
 
     private AmazonS3 s3;
+
+    static {
+        short magicNumber = JGROUPS_PROTOCOL_DEFAULT_MAGIC_NUMBER;
+        if (!StringUtils.isNullOrEmpty(System.getProperty(MAGIC_NUMBER_SYSTEM_PROPERTY))) {
+            try {
+                magicNumber = Short.parseShort(System.getProperty(MAGIC_NUMBER_SYSTEM_PROPERTY));
+            } catch (NumberFormatException e) {
+                LogFactory.getLog(NATIVE_S3_PING.class).warn("Could not convert " + System.getProperty(MAGIC_NUMBER_SYSTEM_PROPERTY)
+                    + " to short. Using default magic number " + JGROUPS_PROTOCOL_DEFAULT_MAGIC_NUMBER);
+            }
+        }
+        registerProtocolWithJGroups(magicNumber);
+    }
 
     @Override
     public void init() throws Exception {
@@ -191,10 +205,6 @@ public class NATIVE_S3_PING extends FILE_PING {
     @Override
     protected void remove(final String clustername, final Address addr) {
         // our server can get killed all the time, don't depend on cleanup on shudown
-    }
-
-    public static void registerProtocolWithJGroups() {
-        registerProtocolWithJGroups(JGROUPS_PROTOCOL_DEFAULT_MAGIC_NUMBER);
     }
 
     public static void registerProtocolWithJGroups(short magicNumber) {

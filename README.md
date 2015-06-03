@@ -23,11 +23,10 @@ Like the original `S3_PING`, this library implement a JGroups `Discovery` protoc
         bucketPrefix="jgroups"/>
 ```
 
-To be able to use this configuration in your application, you have to initialize the plugin in your code:
+`NATIVE_S3_PING` automatically registers itself to JGroups with the magic number 789. You can overwrite this by
+setting the system property `s3ping.magic_number` to different number:
 
-```java
-NATIVE_S3_PING.registerProtocolWithJGroups();
-```
+`-Ds3ping.magic_number=123`
 
 ## Possible Configurations
 
