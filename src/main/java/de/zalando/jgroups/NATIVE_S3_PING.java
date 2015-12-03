@@ -1,11 +1,10 @@
 package de.zalando.jgroups;
 
-import com.amazonaws.regions.Region;
-import com.amazonaws.regions.Regions;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.model.*;
-import com.amazonaws.util.StringUtils;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
+import java.util.List;
+
 import org.jgroups.Address;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
@@ -14,17 +13,87 @@ import org.jgroups.protocols.FILE_PING;
 import org.jgroups.protocols.PingData;
 import org.jgroups.util.Responses;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.util.List;
+import com.amazonaws.AmazonClientException;
+import com.amazonaws.regions.Region;
+import com.amazonaws.regions.Regions;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest;
+import com.amazonaws.services.s3.model.DeleteObjectsRequest.KeyVersion;
+import com.amazonaws.services.s3.model.DeleteObjectsResult;
+import com.amazonaws.services.s3.model.DeleteObjectsResult.DeletedObject;
+import com.amazonaws.services.s3.model.GetObjectRequest;
+import com.amazonaws.services.s3.model.ListObjectsRequest;
+import com.amazonaws.services.s3.model.ObjectListing;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.util.StringUtils;
 
 /**
  * Created after the original S3_PING from Bela Ban.
  *
  * This implementation uses the AWS SDK in order to be more solid and to benefit from the built-in security features
  * like getting credentials via IAM instance profiles instead of handling this in the application.
+ * 
+ * The S3 bucket should have an bucket policy something like
+ * 
+ * <pre>
+ * {
+	"Version": "2012-10-17",
+	"Id": "Policy1449105442615",
+	"Statement": [
+		{
+			"Sid": "Stmt1449105434208",
+			"Effect": "Allow",
+			"Principal": "*",
+			"Action": [
+				"s3:ListBucketVersions",
+				"s3:ListBucket"
+			],
+			"Resource": "arn:aws:s3:::bob-s3-ping-dev",
+			"Condition": {
+				"IpAddress": {
+					"aws:SourceIp": [
+						"10.3.0.0/16",
+						"54.66.112.244",
+						"173.227.199.10/24",
+						"10.2.0.0/16"
+					]
+				}
+			}
+		},
+		{
+			"Sid": "Stmt3810574099",
+			"Effect": "Allow",
+			"Principal": {
+				"AWS": "*"
+			},
+			"Action": [
+				"s3:GetObjectVersion",
+				"s3:DeleteObject",
+				"s3:DeleteObjectVersion",
+				"s3:GetObject",
+				"s3:PutObject"
+			],
+			"Resource": "arn:aws:s3:::bob-s3-ping-dev/*",
+			"Condition": {
+				"IpAddress": {
+					"aws:SourceIp": [
+						"10.3.0.0/16",
+						"54.66.112.244",
+						"173.227.199.10/24",
+						"10.2.0.0/16"
+					]
+				}
+			}
+		}
+	]
+}
+</pre>
  *
- * @author Tobias Sarnowski
+ * @author Tobias Sarnowski, M Ackerman
  */
 public class NATIVE_S3_PING extends FILE_PING {
     private static final short JGROUPS_PROTOCOL_DEFAULT_MAGIC_NUMBER = 789;
@@ -71,18 +140,41 @@ public class NATIVE_S3_PING extends FILE_PING {
             bucketPrefix = bucketPrefix + "/";
         }
 
-        s3 = new AmazonS3Client();
-
-        if (endpoint != null) {
-            s3.setEndpoint(endpoint);
-            log.info("set Amazon S3 endpoint to %s", endpoint);
-        }
-
-        final Region region = Region.getRegion(Regions.fromName(regionName));
-        s3.setRegion(region);
+        Region region = Region.getRegion(Regions.fromName(getRegionName()));
+        getS3Client().setRegion(region);
+        
+        // set endpoint AFTER region, as setting region will override any endpoint that has been set
+        getS3Client().setEndpoint(getS3Endpoint());
 
         log.info("using Amazon S3 ping in region %s with bucket '%s' and prefix '%s'", region, bucketName, bucketPrefix);
     }
+
+	/**
+	 * allow overload to allow for different credentialing options
+	 * @return 
+	 */
+	protected AmazonS3 getS3Client() {
+		if (s3 == null) {
+			s3 = new AmazonS3Client();
+		}
+		return s3;
+	}
+
+	/**
+	 * allow overload to allow for different endpoint options
+	 * @return 
+	 */
+	protected String getS3Endpoint() {
+		return endpoint;
+	}
+
+	/**
+	 * allow overload to allow for different region options, e.g., lookup region dynamically
+	 * @return 
+	 */
+	protected String getRegionName() {
+		return regionName;
+	}
 
     @Override
     protected void createRootDir() {
@@ -174,7 +266,7 @@ public class NATIVE_S3_PING extends FILE_PING {
     @Override
     protected void write(final List<PingData> list, final String clustername) {
         final String filename = addressToFilename(local_addr);
-        final String key = getClusterPrefix(clustername) + filename;
+        final String key = getKeyName(clustername, filename);
 
         try {
             final ByteArrayOutputStream outStream = new ByteArrayOutputStream(SERIALIZATION_BUFFER_SIZE);
@@ -202,10 +294,68 @@ public class NATIVE_S3_PING extends FILE_PING {
         }
     }
 
+	private String getKeyName(String clustername, String filename) {
+		return getClusterPrefix(clustername) + filename;
+	}
+
     @Override
     protected void remove(final String clustername, final Address addr) {
-        // our server can get killed all the time, don't depend on cleanup on shudown
+		String filename=addressToFilename(addr);
+        String key = getKeyName(clustername, filename);
+    	try {
+			DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucketName).withKeys(key);
+			DeleteObjectsResult result = s3.deleteObjects(deleteObjectsRequest);
+			for (DeletedObject deletedObject : result.getDeletedObjects()) {
+                if (log.isInfoEnabled()) 
+                    log.info("removed object %s from S3 ...", deletedObject.getKey());
+			}
+		} catch (AmazonClientException e) {
+            log.error(String.format("Exception removing address from Amazon S3 [%s]", key), e);
+		}
     }
+    
+    @Override
+    /** Removes all files for the given cluster name */
+    protected void removeAll(String clustername) {
+        if (clustername == null) 
+            return;
+
+        String clusterPrefix = getClusterPrefix(clustername);
+
+        if (log.isInfoEnabled()) 
+            log.info("getting entries for %s ...", clusterPrefix);
+
+        try {
+            ObjectListing objectListing = s3.listObjects(new ListObjectsRequest()
+                            .withBucketName(bucketName)
+                            .withPrefix(clusterPrefix));
+
+            if (log.isInfoEnabled()) 
+                log.info("got object listing, %d entries [%s]", objectListing.getObjectSummaries().size(), clusterPrefix);
+
+			List<KeyVersion> keys = new ArrayList<KeyVersion>();
+            for (S3ObjectSummary summary : objectListing.getObjectSummaries()) {
+                if (log.isInfoEnabled()) 
+                    log.info("checking name matches filter(.list) for object %s ...", summary.getKey());
+
+                if (filter.accept(null, summary.getKey())) 
+                	keys.add(new KeyVersion(summary.getKey()));
+            }
+            
+            if (keys.size() > 0) {
+    			DeleteObjectsRequest deleteObjectsRequest = new DeleteObjectsRequest(bucketName).withKeys(keys);
+    			DeleteObjectsResult result = s3.deleteObjects(deleteObjectsRequest);
+    			for (DeletedObject deletedObject : result.getDeletedObjects()) {
+                    if (log.isInfoEnabled()) 
+                        log.info("removed object %s from S3 ...", deletedObject.getKey());
+				}
+            }
+
+        } catch (Exception e) {
+            log.error(String.format("failed deleting list from Amazon S3 [%s]", clusterPrefix), e);
+        }
+    }
+
 
     public static void registerProtocolWithJGroups(short magicNumber) {
         ClassConfigurator.addProtocol(magicNumber, NATIVE_S3_PING.class);
